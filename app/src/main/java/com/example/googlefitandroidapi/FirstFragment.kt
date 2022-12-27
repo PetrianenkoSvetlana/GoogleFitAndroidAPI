@@ -8,13 +8,13 @@ import androidx.fragment.app.Fragment
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Toast
 import androidx.navigation.fragment.findNavController
 import com.example.googlefitandroidapi.databinding.FragmentFirstBinding
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.fitness.Fitness
 import com.google.android.gms.fitness.FitnessOptions
-import com.google.android.gms.fitness.data.DataType
-import com.google.android.gms.fitness.data.Field
+import com.google.android.gms.fitness.data.*
 import com.google.android.gms.fitness.request.DataReadRequest
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -61,11 +61,13 @@ class FirstFragment : Fragment() {
                 fitnessOptions)
         } else {
            accessGoogleFit()
+           binding.countBtn.setOnClickListener { addCountSteps() }
        }
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        binding.countBtn.setOnClickListener { addCountSteps() }
 
         when (resultCode) {
             Activity.RESULT_OK -> when (requestCode) {
@@ -88,17 +90,16 @@ class FirstFragment : Fragment() {
 
     private fun accessGoogleFit() {
        // Read the data that's been collected throughout the past week.
-        val endTime = LocalDateTime.now().atZone(ZoneId.systemDefault())
-        val startTime = endTime.minusWeeks(1)
-        Log.i(TAG, "Range Start: $startTime")
-        Log.i(TAG, "Range End: $endTime")
+        val end = LocalDateTime.now()
+        val start = end.minusYears(1)
+        val endSeconds = end.atZone(ZoneId.systemDefault()).toEpochSecond()
+        val startSeconds = start.atZone(ZoneId.systemDefault()).toEpochSecond()
 
-        val readRequest =
-            DataReadRequest.Builder()
-                .aggregate(DataType.AGGREGATE_STEP_COUNT_DELTA)
-                .bucketByTime(1, TimeUnit.DAYS)
-                .setTimeRange(startTime.toEpochSecond(), endTime.toEpochSecond(), TimeUnit.SECONDS)
-                .build()
+        val readRequest = DataReadRequest.Builder()
+            .aggregate(DataType.AGGREGATE_STEP_COUNT_DELTA)
+            .setTimeRange(startSeconds, endSeconds, TimeUnit.SECONDS)
+            .bucketByTime(1, TimeUnit.DAYS)
+            .build()
 
         Fitness.getHistoryClient(requireActivity(), GoogleSignIn.getAccountForExtension(requireContext(), fitnessOptions))
             .readData(readRequest)
@@ -118,6 +119,47 @@ class FirstFragment : Fragment() {
             }
             .addOnFailureListener { e ->
                 Log.w(TAG,"There was an error reading data from Google Fit", e)
+            }
+    }
+
+    private fun addCountSteps() {
+        // Declare that the data being inserted was collected during the past hour.
+        val endTime = LocalDateTime.now().atZone(ZoneId.systemDefault())
+        val startTime = endTime.minusSeconds(1)
+
+// Create a data source
+        val dataSource = DataSource.Builder()
+            .setAppPackageName(requireContext())
+            .setDataType(DataType.TYPE_STEP_COUNT_DELTA)
+            .setStreamName("$TAG - step count")
+            .setType(DataSource.TYPE_RAW)
+            .build()
+
+// For each data point, specify a start time, end time, and the
+// data value -- in this case, 950 new steps.
+        val stepCountDelta = binding.enterStepCount.text.toString()
+        if (stepCountDelta.isBlank()) {
+            Toast.makeText(requireContext(), "Введите количество шагов!", Toast.LENGTH_LONG).show()
+            return
+        }
+        val dataPoint =
+            DataPoint.builder(dataSource)
+                .setField(Field.FIELD_STEPS, stepCountDelta.toInt())
+                .setTimeInterval(startTime.toEpochSecond(), endTime.toEpochSecond(), TimeUnit.SECONDS)
+                .build()
+
+        val dataSet = DataSet.builder(dataSource)
+            .add(dataPoint)
+            .build()
+
+        Fitness.getHistoryClient(requireActivity(), GoogleSignIn.getAccountForExtension(requireContext(), fitnessOptions))
+            .insertData(dataSet)
+            .addOnSuccessListener {
+                accessGoogleFit()
+                Log.i(TAG, "DataSet added successfully!")
+            }
+            .addOnFailureListener { e ->
+                Log.w(TAG, "There was an error adding the DataSet", e)
             }
     }
 }
