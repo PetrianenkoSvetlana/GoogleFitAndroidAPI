@@ -15,6 +15,7 @@ import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.fitness.Fitness
 import com.google.android.gms.fitness.FitnessOptions
 import com.google.android.gms.fitness.data.*
+import com.google.android.gms.fitness.request.DataDeleteRequest
 import com.google.android.gms.fitness.request.DataReadRequest
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -61,13 +62,25 @@ class FirstFragment : Fragment() {
                 fitnessOptions)
         } else {
            accessGoogleFit()
-           binding.countBtn.setOnClickListener { addCountSteps() }
+           binding.countBtn.setOnClickListener {
+               addCountSteps()
+               binding.enterStepCount.setText("")
+           }
+           binding.deleteBtn.setOnClickListener {
+               deleteCountSteps()
+           }
        }
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        binding.countBtn.setOnClickListener { addCountSteps() }
+        binding.countBtn.setOnClickListener {
+            addCountSteps()
+            binding.enterStepCount.setText("")
+        }
+        binding.deleteBtn.setOnClickListener {
+            deleteCountSteps()
+        }
 
         when (resultCode) {
             Activity.RESULT_OK -> when (requestCode) {
@@ -125,7 +138,7 @@ class FirstFragment : Fragment() {
     private fun addCountSteps() {
         // Declare that the data being inserted was collected during the past hour.
         val endTime = LocalDateTime.now().atZone(ZoneId.systemDefault())
-        val startTime = endTime.minusSeconds(1)
+        val startTime = endTime.minusSeconds(5)
 
 // Create a data source
         val dataSource = DataSource.Builder()
@@ -160,6 +173,31 @@ class FirstFragment : Fragment() {
             }
             .addOnFailureListener { e ->
                 Log.w(TAG, "There was an error adding the DataSet", e)
+            }
+    }
+
+    private fun deleteCountSteps() {
+        // Declare that this code deletes step count information that was collected
+// throughout the past day.
+        val endTime = LocalDateTime.now().atZone(ZoneId.systemDefault())
+        val startTime = endTime.minusSeconds(30)
+
+// Create a delete request object, providing a data type and a time interval
+        val request = DataDeleteRequest.Builder()
+            .setTimeInterval(startTime.toEpochSecond(), endTime.toEpochSecond(), TimeUnit.SECONDS)
+            .addDataType(DataType.TYPE_STEP_COUNT_DELTA)
+            .build()
+
+// Invoke the History API with the HistoryClient object and delete request, and
+// then specify a callback that will check the result.
+        Fitness.getHistoryClient(requireActivity(), GoogleSignIn.getAccountForExtension(requireContext(), fitnessOptions))
+            .deleteData(request)
+            .addOnSuccessListener {
+                accessGoogleFit()
+                Log.i(TAG, "Data deleted successfully!")
+            }
+            .addOnFailureListener { e ->
+                Log.w(TAG, "There was an error with the deletion request", e)
             }
     }
 }
